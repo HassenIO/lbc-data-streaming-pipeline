@@ -1,4 +1,6 @@
 data/
 data/*
+notebooks/*
+!notebooks/.keep
 
 venv/
