@@ -30,7 +30,13 @@ done
 
 # Create the desired Kafka topics
 echo "Kafka is ready. Creating Kafka topics..."
-kafka-topics --create --topic creations-topic --partitions 1 --replication-factor 1 --if-not-exists --zookeeper zookeeper:2181
+kafka-topics --create \
+    --topic creations-topic \
+    --partitions 1 \
+    --replication-factor 1 \
+    --if-not-exists \
+    --zookeeper zookeeper:2181 \
+    --bootstrap-server kafka:9092
 # NOTA: Add here more topics if needed
 
 echo "Kafka's topics created successfully."
