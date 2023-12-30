@@ -1,42 +1,27 @@
-# Start the env: docker compose up
-# Stop the env: docker compose down
-# Clean all containers: docker compose rm -svf
-
 version: '3'
 
 services:
   zookeeper:
-    image: confluentinc/cp-zookeeper:latest
-    container_name: zookeeper
+    image: quay.io/debezium/zookeeper:2.1
     ports:
-      - "2181:2181"
-    environment:
-      ZOOKEEPER_CLIENT_PORT: 2181
-      ZOOKEEPER_TICK_TIME: 2000
-
+      - 2181:2181
+      - 2888:2888
+      - 3888:3888
+    # networks:
+    #   - lbc-network-2
   kafka:
-    image: confluentinc/cp-kafka:latest
-    container_name: kafka
+    image: quay.io/debezium/kafka:2.1
     ports:
-      - "9094:9094"
-    environment:
-      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
-
-      KAFKA_LISTENERS: INTERNAL://0.0.0.0:9092,OUTSIDE://0.0.0.0:9094
-      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka:9092,OUTSIDE://localhost:9094
-      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INTERNAL:PLAINTEXT,OUTSIDE:PLAINTEXT
-      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
-
-      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
-      KAFKA_BROKER_ID: 1
-      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
-      KAFKA_CREATE_TOPICS: test_topic:1:1
-    depends_on:
+      - 9092:9092
+    links:
       - zookeeper
-    # command: ["/bin/bash", "-c", "/create-topics.sh"] # Run the initialization script
-    # volumes:
-    #   - ./bin/create-kafka-topics.sh:/create-topics.sh # Mount the script into the Kafka container
-
+    environment:
+      ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      KAFKA_CREATE_TOPICS: dbserver1.inventory.customers:1:1
+    # networks:
+    #   - lbc-network-2
+  
   kafdrop:
     image: obsidiandynamics/kafdrop:latest
     ports:
@@ -46,31 +31,30 @@ services:
     depends_on:
       - kafka
 
-  mongodb:
-    image: mongo:latest
-    container_name: mongodb
+  postgres:
+    image: quay.io/debezium/example-postgres:2.1
     ports:
-      - "27017:27017"
-    volumes:
-      - ./data:/data/db
-
-  app:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    volumes:
-      - ./notebooks:/home/jovyan/notebooks
-    ports:
-      - "8888:8888" # Jupyter lab UI
-      - "4040:4040" # Spark UI
-    depends_on:
-      - kafka
-      - mongodb
+      - 5432:5432
     environment:
-      - KAFKA_BROKER=kafka:9092
-      - MONGO_URI=mongodb://mongo:27017
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    # networks:
+    #   - lbc-network-2
+  connect:
+    image: quay.io/debezium/connect:2.1
+    ports:
+      - 8083:8083
+    links:
+      - kafka
+      - postgres
+    environment:
+      GROUP_ID: 1
+      BOOTSTRAP_SERVERS: kafka:9092
+      CONFIG_STORAGE_TOPIC: my_connect_configs
+      OFFSET_STORAGE_TOPIC: my_connect_offsets
+      STATUS_STORAGE_TOPIC: my_connect_statuses
+    # networks:
+    #   - lbc-network-2
 
-networks:
-  default:
-    name: lbc-network
-    external: false
+# networks:
+#   lbc-network-2:
