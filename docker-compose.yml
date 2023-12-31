@@ -56,5 +56,28 @@ services:
     # networks:
     #   - lbc-network-2
 
+  mongodb:
+    image: mongo:latest
+    ports:
+      - "27017:27017"
+    volumes:
+      - ./data:/data/db
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    volumes:
+      - ./notebooks:/home/jovyan/notebooks
+    ports:
+      - "8888:8888" # Jupyter lab UI
+      - "4040:4040" # Spark UI
+    depends_on:
+      - kafka
+      - postgres
+      - mongodb
+    environment:
+      - KAFKA_BROKER=kafka:9092
+
 # networks:
 #   lbc-network-2:

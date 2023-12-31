@@ -5,6 +5,12 @@ export DEBEZIUM_VERSION=2.1
 docker compose up
 ```
 
+When everything is up, register the PG-Kafka connector with the following CURL command:
+
+```
+curl -i -X POST -H "Accept:application/json" -H  "Content-Type:application/json" http://localhost:8083/connectors/ -d @register-postgres.json
+```
+
 To start the Kafka consumer and watch the actions on the Postgres database:
 
 ```

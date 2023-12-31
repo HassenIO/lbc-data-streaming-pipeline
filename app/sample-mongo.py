@@ -32,26 +32,15 @@ def main():
         .toDF("op", "ts_ms") \
         .withColumn("ts_s", to_timestamp(col("ts_ms") / 1000)) \
         .where("op == 'c'") \
-        .withWatermark("ts_s", "10 seconds") \
-        .groupBy(window("ts_s", "10 seconds")).count()
-
-    # w = inserts_df.groupBy(window("ts_s", "10 seconds")).agg(count("op").alias("count"))
-    # w.select(
-    #     w.window.end.cast("string").alias("end_time"),
-    #     "count"
-    # )
-    
-    # inserts_df.groupBy(window("ts_s", "30 seconds")).count()
+        .groupBy(window("ts_s", "10 seconds")) \
+        .count()
 
     # Write to the stream
-    query = inserts_df \
-        .writeStream \
-        .outputMode("append") \
-        .format("console") \
-        .start()
-    
-    # Start the query and wait for it to terminate
-    query.awaitTermination()
+    inserts_df.writeStream \
+        .format("mongo") \
+        .option("uri", "mongodb://mongo:27017/local.creations") \
+        .start() \
+        .awaitTermination()
 
 
 if __name__ == "__main__":
