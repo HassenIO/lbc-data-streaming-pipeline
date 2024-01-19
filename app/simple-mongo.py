@@ -19,6 +19,7 @@ def main():
         .format("kafka") \
         .option("kafka.bootstrap.servers", "kafka:9092") \
         .option("subscribe", "dbserver1.inventory.customers") \
+        .option("spark.mongodb.write.connection.uri", "mongodb://mongo:27017/local.creations?convertJson=any") \
         .load()
 
     # Define the selector expression
@@ -33,29 +34,20 @@ def main():
         .withColumn("ts_s", to_timestamp(col("ts_ms") / 1000)) \
         .where("op == 'c'") \
         .withWatermark("ts_s", "10 seconds") \
-        .groupBy(window("ts_s", "10 seconds")).count()
-
-    # w = inserts_df.groupBy(window("ts_s", "10 seconds")).agg(count("op").alias("count"))
-    # w.select(
-    #     w.window.end.cast("string").alias("end_time"),
-    #     "count"
-    # )
-    
-    # inserts_df.groupBy(window("ts_s", "30 seconds")).count()
+        .groupBy(window("ts_s", "10 seconds")) \
+        .count()
 
     # Write to the stream
-    query = inserts_df \
-        .writeStream \
-        .outputMode("append") \
-        .format("console") \
-        .start()
-    
-    # Start the query and wait for it to terminate
-    query.awaitTermination()
+    inserts_df.writeStream \
+        .format("mongodb") \
+        .option("checkpointLocation", "/tmp/pyspark/") \
+        .option("forceDeleteTempCheckpointLocation", "true") \
+        .start() \
+        .awaitTermination()
 
 
 if __name__ == "__main__":
     main()
 
 # NOTA: Run the following in a console:
-# clear && spark-submit --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.0 app.py
+# clear && spark-submit --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.0,org.mongodb.spark:mongo-spark-connector_2.12:10.2.1 app.py

@@ -1,37 +1,147 @@
-# How to test Kafka manually
+# Little Big Challenge
 
-To test that Kafka is working properly, you can use Kafka command-line tools or create a simple producer and consumer in your preferred programming language. Here, I'll provide instructions for testing Kafka using command-line tools.
+## To start the application
 
-1. **Create a Topic**:
+I created a bunch of make commands in the Makefile to help run the application.
 
-   Before you can produce and consume messages, you need to create a Kafka topic. You can use the Kafka command-line tool to do this. Open a terminal and run the following command to create a topic named "test-topic":
+To start the application and boot all the necessary services, run:
 
-   ```bash
-   docker exec -it kafka kafka-topics --create --topic test-topic --partitions 1 --replication-factor 1 --bootstrap-server localhost:9092
-   ```
+```bash
+make up
+```
 
-2. **Produce Messages**:
+This will run the docker compose and start the necessary containers:
 
-   To produce messages to the "test-topic" topic, you can use the Kafka console producer. Run the following command to produce a message:
+- Zookeeper (used to manage Kafka)
+- Kafka
+- Kafdrop ([optional] used to visualize Kafka topics)
+- PostgreSQL
+- Debezium (used to capture changes in the PostgreSQL database, and streamline them to Kafka)
+- MongoDB (used to store the final data aggregated data)
+- JupyterLab (The notebook that we are going to use to run the code) -> Used for testing purposes
 
-   ```bash
-   docker exec -it kafka kafka-console-producer --topic test-topic --broker-list localhost:9092
-   ```
+When the containers are up and running, you can access the JupyterLab notebook at http://localhost:8888/lab?token=xxx
 
-   After running this command, you can start typing messages, and each line you enter will be sent as a Kafka message.
+(Have a look at the logs to get the real token value)
 
-3. **Consume Messages**:
+## Setup the environment
 
-   To consume messages from the "test-topic" topic, you can use the Kafka console consumer. Open a new terminal window and run the following command:
+Setup the Kafka by creating the topics and connecting Debezium, by running the following make command:
 
-   ```bash
-   docker exec -it kafka kafka-console-consumer --topic test-topic --from-beginning --bootstrap-server localhost:9092
-   ```
+```bash
+make stream 
+```
 
-   This command will display the messages that you produce in step 2. You should see the messages you entered in the producer terminal.
+This will keep the connection open and streamlines all the events from PostgreSQL to Kafka. Each mutation operation to PostgreSQL will be catched and showed here.
 
-4. **Verify Kafka Functionality**:
+To connect to the PostgreSQL database, you can use the following make command:
 
-   To further test Kafka's functionality, you can produce and consume more messages, experiment with different topics, and explore Kafka's features such as partitions and consumer groups.
+```bash
+make pg
+```
 
-By following these steps, you can confirm that Kafka is working properly in your Docker container. If you encounter any issues or want to explore more advanced Kafka features, you can refer to the official Kafka documentation for more detailed information and examples: [Apache Kafka Documentation](https://kafka.apache.org/documentation/).
+This will open a psql connection to the PostgreSQL database.
+
+## Example manipulating data
+
+Within the psql console, we can create a new customer with the following command:
+
+```sql
+INSERT INTO customers(id, first_name, last_name, email) VALUES (1005, 'Hassen', 'Taidirt', 'hi@hassen.io');
+```
+
+If you have opened both the psql console and Debezium connector console (with `make register`), you will see the mutation event in the Debezium console:
+
+```json
+{"schema":{"type":"struct","fields":[{"type":"struct","fields":[{"type":"int32","optional":false,"default":0,"field":"id"},{"type":"string","optional":false,"field":"first_name"},{"type":"string","optional":false,"field":"last_name"},{"type":"string","optional":false,"field":"email"}],"optional":true,"name":"dbserver1.inventory.customers.Value","field":"before"},{"type":"struct","fields":[{"type":"int32","optional":false,"default":0,"field":"id"},{"type":"string","optional":false,"field":"first_name"},{"type":"string","optional":false,"field":"last_name"},{"type":"string","optional":false,"field":"email"}],"optional":true,"name":"dbserver1.inventory.customers.Value","field":"after"},{"type":"struct","fields":[{"type":"string","optional":false,"field":"version"},{"type":"string","optional":false,"field":"connector"},{"type":"string","optional":false,"field":"name"},{"type":"int64","optional":false,"field":"ts_ms"},{"type":"string","optional":true,"name":"io.debezium.data.Enum","version":1,"parameters":{"allowed":"true,last,false,incremental"},"default":"false","field":"snapshot"},{"type":"string","optional":false,"field":"db"},{"type":"string","optional":true,"field":"sequence"},{"type":"string","optional":false,"field":"schema"},{"type":"string","optional":false,"field":"table"},{"type":"int64","optional":true,"field":"txId"},{"type":"int64","optional":true,"field":"lsn"},{"type":"int64","optional":true,"field":"xmin"}],"optional":false,"name":"io.debezium.connector.postgresql.Source","field":"source"},{"type":"string","optional":false,"field":"op"},{"type":"int64","optional":true,"field":"ts_ms"},{"type":"struct","fields":[{"type":"string","optional":false,"field":"id"},{"type":"int64","optional":false,"field":"total_order"},{"type":"int64","optional":false,"field":"data_collection_order"}],"optional":true,"name":"event.block","version":1,"field":"transaction"}],"optional":false,"name":"dbserver1.inventory.customers.Envelope","version":1},"payload":{"before":null,"after":{"id":1005,"first_name":"Hassen","last_name":"Taidirt","email":"hi@hassen.io"},"source":{"version":"2.1.4.Final","connector":"postgresql","name":"dbserver1","ts_ms":1705611172576,"snapshot":"false","db":"postgres","sequence":"[null,\"34487408\"]","schema":"inventory","table":"customers","txId":767,"lsn":34487408,"xmin":null},"op":"c","ts_ms":1705611172913,"transaction":null}}
+```
+
+The important part if the `payload` which parsed looks like this:
+
+```json
+"payload": {
+     "before": null,
+     "after":
+     {
+         "id": 1005,
+         "first_name": "Hassen",
+         "last_name": "Taidirt",
+         "email": "hi@hassen.io"
+     },
+     "source":
+     {
+         "version": "2.1.4.Final",
+         "connector": "postgresql",
+         "name": "dbserver1",
+         "ts_ms": 1705611172576,
+         "snapshot": "false",
+         "db": "postgres",
+         "sequence": "[null,\"34487408\"]",
+         "schema": "inventory",
+         "table": "customers",
+         "txId": 767,
+         "lsn": 34487408,
+         "xmin": null
+     },
+     "op": "c",
+     "ts_ms": 1705611172913,
+     "transaction": null
+ }
+```
+
+As stated, this is a **CREATION** operation because we get a `"op": "c"` payload value and no before value (`"before": null`).
+
+Back to the psql console, updating the previous record with the following update command:
+
+```sql
+UPDATE customers SET email='htaidirt@gmail.com' WHERE id=1005;
+```
+
+Will produce the following data capture:
+
+```json
+{"schema":{"type":"struct","fields":[{"type":"struct","fields":[{"type":"int32","optional":false,"default":0,"field":"id"},{"type":"string","optional":false,"field":"first_name"},{"type":"string","optional":false,"field":"last_name"},{"type":"string","optional":false,"field":"email"}],"optional":true,"name":"dbserver1.inventory.customers.Value","field":"before"},{"type":"struct","fields":[{"type":"int32","optional":false,"default":0,"field":"id"},{"type":"string","optional":false,"field":"first_name"},{"type":"string","optional":false,"field":"last_name"},{"type":"string","optional":false,"field":"email"}],"optional":true,"name":"dbserver1.inventory.customers.Value","field":"after"},{"type":"struct","fields":[{"type":"string","optional":false,"field":"version"},{"type":"string","optional":false,"field":"connector"},{"type":"string","optional":false,"field":"name"},{"type":"int64","optional":false,"field":"ts_ms"},{"type":"string","optional":true,"name":"io.debezium.data.Enum","version":1,"parameters":{"allowed":"true,last,false,incremental"},"default":"false","field":"snapshot"},{"type":"string","optional":false,"field":"db"},{"type":"string","optional":true,"field":"sequence"},{"type":"string","optional":false,"field":"schema"},{"type":"string","optional":false,"field":"table"},{"type":"int64","optional":true,"field":"txId"},{"type":"int64","optional":true,"field":"lsn"},{"type":"int64","optional":true,"field":"xmin"}],"optional":false,"name":"io.debezium.connector.postgresql.Source","field":"source"},{"type":"string","optional":false,"field":"op"},{"type":"int64","optional":true,"field":"ts_ms"},{"type":"struct","fields":[{"type":"string","optional":false,"field":"id"},{"type":"int64","optional":false,"field":"total_order"},{"type":"int64","optional":false,"field":"data_collection_order"}],"optional":true,"name":"event.block","version":1,"field":"transaction"}],"optional":false,"name":"dbserver1.inventory.customers.Envelope","version":1},"payload":{"before":{"id":1005,"first_name":"Hassen","last_name":"Taidirt","email":"hi@hassen.io"},"after":{"id":1005,"first_name":"Hassen","last_name":"Taidirt","email":"htaidirt@gmail.com"},"source":{"version":"2.1.4.Final","connector":"postgresql","name":"dbserver1","ts_ms":1705611235819,"snapshot":"false","db":"postgres","sequence":"[\"34488384\",\"34488440\"]","schema":"inventory","table":"customers","txId":768,"lsn":34488440,"xmin":null},"op":"u","ts_ms":1705611236197,"transaction":null}}
+```
+
+which the parsed payload looks like this:
+
+```json
+"payload": {
+     "before":
+     {
+         "id": 1005,
+         "first_name": "Hassen",
+         "last_name": "Taidirt",
+         "email": "hi@hassen.io"
+     },
+     "after":
+     {
+         "id": 1005,
+         "first_name": "Hassen",
+         "last_name": "Taidirt",
+         "email": "htaidirt@gmail.com"
+     },
+     "source":
+     {
+         "version": "2.1.4.Final",
+         "connector": "postgresql",
+         "name": "dbserver1",
+         "ts_ms": 1705611235819,
+         "snapshot": "false",
+         "db": "postgres",
+         "sequence": "[\"34488384\",\"34488440\"]",
+         "schema": "inventory",
+         "table": "customers",
+         "txId": 768,
+         "lsn": 34488440,
+         "xmin": null
+     },
+     "op": "u",
+     "ts_ms": 1705611236197,
+     "transaction": null
+ }
+```
+
+with an update operation (`"op": "u"`) and a before value that is the previous value of the record.
+
+In our PySpark, we need to access the `"op"` value of the payload, then only filter for the creation events (value is `c`).

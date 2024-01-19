@@ -8,7 +8,8 @@ services:
       - 2888:2888
       - 3888:3888
     # networks:
-    #   - lbc-network-2
+    #   - lbc-network
+
   kafka:
     image: quay.io/debezium/kafka:2.1
     ports:
@@ -20,9 +21,9 @@ services:
       KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
       KAFKA_CREATE_TOPICS: dbserver1.inventory.customers:1:1
     # networks:
-    #   - lbc-network-2
+    #   - lbc-network
   
-  kafdrop:
+  kafdrop: # UI to monitor kafka (optional)
     image: obsidiandynamics/kafdrop:latest
     ports:
       - 9000:9000
@@ -39,8 +40,9 @@ services:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
     # networks:
-    #   - lbc-network-2
-  connect:
+    #   - lbc-network
+
+  connect: # Used by Debezium to connect postgres to kafka
     image: quay.io/debezium/connect:2.1
     ports:
       - 8083:8083
@@ -54,16 +56,16 @@ services:
       OFFSET_STORAGE_TOPIC: my_connect_offsets
       STATUS_STORAGE_TOPIC: my_connect_statuses
     # networks:
-    #   - lbc-network-2
+    #   - lbc-network
 
   mongodb:
     image: mongo:latest
     ports:
       - "27017:27017"
     volumes:
-      - ./data:/data/db
+      - ./data/mongo:/data/db
 
-  app:
+  app: # A jupyter Notebook to run the PySpark code
     build:
       context: .
       dockerfile: Dockerfile
@@ -73,11 +75,11 @@ services:
       - "8888:8888" # Jupyter lab UI
       - "4040:4040" # Spark UI
     depends_on:
-      - kafka
       - postgres
+      - kafka
       - mongodb
     environment:
       - KAFKA_BROKER=kafka:9092
 
 # networks:
-#   lbc-network-2:
+#   lbc-network:
